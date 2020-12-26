@@ -1,7 +1,10 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace Invoker\Test;
 
+use Exception;
+use Invoker\Exception\NotCallableException;
+use Invoker\Exception\NotEnoughParametersException;
 use Invoker\Invoker;
 use Invoker\ParameterResolver\AssociativeArrayResolver;
 use Invoker\ParameterResolver\Container\ParameterNameContainerResolver;
@@ -9,21 +12,19 @@ use Invoker\ParameterResolver\Container\TypeHintContainerResolver;
 use Invoker\Test\Mock\ArrayContainer;
 use Invoker\Test\Mock\CallableSpy;
 use PHPUnit\Framework\TestCase;
+use stdClass;
 
 class InvokerTest extends TestCase
 {
-    /**
-     * @var Invoker
-     */
+    /** @var Invoker */
     private $invoker;
 
-    /**
-     * @var ArrayContainer
-     */
+    /** @var ArrayContainer */
     private $container;
 
-    public function setUp()
+    public function setUp(): void
     {
+        parent::setUp();
         $this->container = new ArrayContainer;
         $this->invoker = new Invoker(null, $this->container);
     }
@@ -47,29 +48,29 @@ class InvokerTest extends TestCase
     {
         $fixture = new InvokerTestFixture;
 
-        $this->invoker->call(array($fixture, 'foo'));
+        $this->invoker->call([$fixture, 'foo']);
 
         $this->assertTrue($fixture->wasCalled);
     }
 
     /**
      * @test
-     * @expectedException \Invoker\Exception\NotCallableException
-     * @expectedExceptionMessage Invoker\Test\InvokerTestFixture::bar() is not a callable.
      */
     public function cannot_invoke_unknown_method()
     {
-        $this->invoker->call(array(new InvokerTestFixture, 'bar'));
+        $this->expectExceptionMessage('Invoker\Test\InvokerTestFixture::bar() is not a callable.');
+        $this->expectException(NotCallableException::class);
+        $this->invoker->call([new InvokerTestFixture, 'bar']);
     }
 
     /**
      * @test
-     * @expectedException \Invoker\Exception\NotCallableException
-     * @expectedExceptionMessage Invoker\Test\InvokerTestMagicMethodFixture::foo() is not a callable. A __call() method exists but magic methods are not supported.
      */
     public function cannot_invoke_magic_method()
     {
-        $this->invoker->call(array(new InvokerTestMagicMethodFixture, 'foo'));
+        $this->expectExceptionMessage('Invoker\Test\InvokerTestMagicMethodFixture::foo() is not a callable. A __call() method exists but magic methods are not supported.');
+        $this->expectException(NotCallableException::class);
+        $this->invoker->call([new InvokerTestMagicMethodFixture, 'foo']);
     }
 
     /**
@@ -77,7 +78,7 @@ class InvokerTest extends TestCase
      */
     public function should_invoke_static_method()
     {
-        $result = $this->invoker->call(array('Invoker\Test\InvokerTestStaticFixture', 'foo'));
+        $result = $this->invoker->call([InvokerTestStaticFixture::class, 'foo']);
 
         $this->assertEquals('bar', $result);
     }
@@ -106,28 +107,30 @@ class InvokerTest extends TestCase
 
     /**
      * @test
-     * @expectedException \Invoker\Exception\NotEnoughParametersException
-     * @expectedExceptionMessage Unable to invoke the callable because no value was given for parameter 2 ($bar)
      */
     public function should_throw_if_no_value_for_parameter()
     {
-        $this->invoker->call(function ($foo, $bar, $baz) {}, array(
+        $this->expectExceptionMessage('Unable to invoke the callable because no value was given for parameter 2 ($bar)');
+        $this->expectException(NotEnoughParametersException::class);
+        $this->invoker->call(function ($foo, $bar, $baz) {
+        }, [
             'foo' => 'foo',
             'baz' => 'baz',
-        ));
+        ]);
     }
 
     /**
      * @test
-     * @expectedException \Invoker\Exception\NotEnoughParametersException
-     * @expectedExceptionMessage Unable to invoke the callable because no value was given for parameter 2 ($bar)
      */
     public function should_throw_if_no_value_for_parameter_even_with_trailing_optional_parameters()
     {
-        $this->invoker->call(function ($foo, $bar, $baz = null) {}, array(
+        $this->expectExceptionMessage('Unable to invoke the callable because no value was given for parameter 2 ($bar)');
+        $this->expectException(NotEnoughParametersException::class);
+        $this->invoker->call(function ($foo, $bar, $baz = null) {
+        }, [
             'foo' => 'foo',
             'baz' => 'baz',
-        ));
+        ]);
     }
 
     /**
@@ -137,9 +140,9 @@ class InvokerTest extends TestCase
     {
         $callable = new CallableSpy;
 
-        $this->invoker->call($callable, array('foo', 'bar'));
+        $this->invoker->call($callable, ['foo', 'bar']);
 
-        $this->assertWasCalledWith($callable, array('foo', 'bar'));
+        $this->assertWasCalledWith($callable, ['foo', 'bar']);
     }
 
     /**
@@ -147,10 +150,10 @@ class InvokerTest extends TestCase
      */
     public function should_invoke_callable_with_parameters_indexed_by_name()
     {
-        $parameters = array(
+        $parameters = [
             'foo' => 'foo',
             'bar' => 'bar',
-        );
+        ];
 
         $result = $this->invoker->call(function ($foo, $bar) {
             return $foo . $bar;
@@ -164,10 +167,10 @@ class InvokerTest extends TestCase
      */
     public function should_invoke_callable_with_default_value_for_undefined_parameters()
     {
-        $parameters = array(
-            'foo', // Positionned parameter
+        $parameters = [
+            'foo', // Positioned parameter
             'baz' => 'baz', // Named parameter
-        );
+        ];
 
         $result = $this->invoker->call(function ($foo, $bar = 'bar', $baz = null) {
             return $foo . $bar . $baz;
@@ -179,15 +182,55 @@ class InvokerTest extends TestCase
     /**
      * @test
      */
+    public function should_invoke_callable_with_null_for_nullable_parameters()
+    {
+        $result = $this->invoker->call(function (?string $baz = null) {
+            return $baz;
+        });
+
+        $this->assertNull($result);
+    }
+
+    /**
+     * @see https://github.com/PHP-DI/Slim-Bridge/issues/37
+     * @test
+     */
+    public function should_invoke_callable_with_null_for_non_optional_nullable_parameters()
+    {
+        $result = $this->invoker->call(function (?string $baz) {
+            return $baz;
+        });
+
+        $this->assertNull($result);
+    }
+
+    /**
+     * @see https://github.com/PHP-DI/PHP-DI/issues/562
+     * @test
+     */
+    public function should_invoke_callable_with_optional_parameter_before_required_parameter()
+    {
+        $result = $this->invoker->call(function ($baz = 'abc', $foo) {
+            return [$baz, $foo];
+        }, [
+            'foo' => 'bar',
+        ]);
+
+        $this->assertSame(['abc', 'bar'], $result);
+    }
+
+    /**
+     * @test
+     */
     public function should_do_dependency_injection_with_typehint_container_resolver()
     {
         $resolver = new TypeHintContainerResolver($this->container);
         $this->invoker->getParameterResolver()->prependResolver($resolver);
 
-        $expected = new \stdClass();
+        $expected = new stdClass;
         $this->container->set('stdClass', $expected);
 
-        $result = $this->invoker->call(function (\stdClass $foo) {
+        $result = $this->invoker->call(function (stdClass $foo) {
             return $foo;
         });
 
@@ -202,7 +245,7 @@ class InvokerTest extends TestCase
         $resolver = new ParameterNameContainerResolver($this->container);
         $this->invoker->getParameterResolver()->prependResolver($resolver);
 
-        $expected = new \stdClass();
+        $expected = new stdClass;
         $this->container->set('foo', $expected);
 
         $result = $this->invoker->call(function ($foo) {
@@ -233,7 +276,7 @@ class InvokerTest extends TestCase
         $fixture = new InvokerTestFixture;
         $this->container->set('thing-to-call', $fixture);
 
-        $result = $this->invoker->call(array('thing-to-call', 'foo'));
+        $result = $this->invoker->call(['thing-to-call', 'foo']);
 
         $this->assertEquals('bar', $result);
         $this->assertTrue($fixture->wasCalled);
@@ -259,9 +302,9 @@ class InvokerTest extends TestCase
     public function should_resolve_array_callable_from_container_with_class_name()
     {
         $fixture = new InvokerTestFixture;
-        $this->container->set('Invoker\Test\InvokerTestFixture', $fixture);
+        $this->container->set(InvokerTestFixture::class, $fixture);
 
-        $result = $this->invoker->call(array('Invoker\Test\InvokerTestFixture', 'foo'));
+        $result = $this->invoker->call([InvokerTestFixture::class, 'foo']);
 
         $this->assertEquals('bar', $result);
         $this->assertTrue($fixture->wasCalled);
@@ -273,7 +316,7 @@ class InvokerTest extends TestCase
     public function should_resolve_callable_from_container_with_class_name_in_scope_resolution_syntax()
     {
         $fixture = new InvokerTestFixture;
-        $this->container->set('Invoker\Test\InvokerTestFixture', $fixture);
+        $this->container->set(InvokerTestFixture::class, $fixture);
 
         $result = $this->invoker->call('Invoker\Test\InvokerTestFixture::foo');
 
@@ -282,57 +325,80 @@ class InvokerTest extends TestCase
     }
 
     /**
+     * Mixing named parameters with positioned parameters is a really bad idea.
+     * When that happens, the positioned parameters have the highest priority and will
+     * override named parameters in case of conflicts.
+     *
+     * Note that numeric array indexes ignore string indexes. In our example, the
+     * 'bar' value has the position `0`, which overrides the 'foo' value.
+     *
      * @test
-     * @expectedException \Invoker\Exception\NotCallableException
-     * @expectedExceptionMessage Cannot call Invoker\Test\InvokerTestFixture::foo() because foo() is not a static method and "Invoker\Test\InvokerTestFixture" is not a container entry
      */
-    public function should_not_invoke_statically_a_non_static_method()
+    public function positioned_parameters_have_the_highest_priority()
     {
-        $this->invoker->call(array('Invoker\Test\InvokerTestFixture', 'foo'));
+        $factory = function ($foo, $bar = 300) {
+            return [$foo, $bar];
+        };
+        $result = $this->invoker->call($factory, [
+            'foo' => 'foo',
+            'bar',
+        ]);
+
+        $this->assertEquals(['bar', 300], $result);
     }
 
     /**
      * @test
-     * @expectedException \Invoker\Exception\NotCallableException
-     * @expectedExceptionMessage 'foo' is not a callable
+     */
+    public function should_not_invoke_statically_a_non_static_method()
+    {
+        $this->expectExceptionMessage('Cannot call foo() on Invoker\Test\InvokerTestFixture because it is not a class nor a valid container entry');
+        $this->expectException(NotCallableException::class);
+        $this->invoker->call([InvokerTestFixture::class, 'foo']);
+    }
+
+    /**
+     * @test
      */
     public function should_throw_if_calling_non_callable_without_container()
     {
-        $invoker = new Invoker();
+        $this->expectExceptionMessage("'foo' is not a callable");
+        $this->expectException(NotCallableException::class);
+        $invoker = new Invoker;
         $invoker->call('foo');
     }
 
     /**
      * @test
-     * @expectedException \Invoker\Exception\NotCallableException
-     * @expectedExceptionMessage NULL is not a callable
      */
     public function should_throw_if_calling_non_callable_without_container_2()
     {
-        $invoker = new Invoker();
+        $this->expectExceptionMessage('NULL is not a callable');
+        $this->expectException(NotCallableException::class);
+        $invoker = new Invoker;
         $invoker->call(null);
     }
 
     /**
      * @test
-     * @expectedException \Invoker\Exception\NotCallableException
-     * @expectedExceptionMessage 'foo' is neither a callable nor a valid container entry
      */
     public function should_throw_if_calling_non_callable_with_container()
     {
+        $this->expectExceptionMessage("'foo' is neither a callable nor a valid container entry");
+        $this->expectException(NotCallableException::class);
         $invoker = new Invoker(null, new ArrayContainer);
         $invoker->call('foo');
     }
 
     /**
      * @test
-     * @expectedException \Invoker\Exception\NotCallableException
-     * @expectedExceptionMessage Instance of stdClass is not a callable
      */
     public function should_throw_if_calling_non_callable_object()
     {
-        $invoker = new Invoker();
-        $invoker->call(new \stdClass());
+        $this->expectExceptionMessage('Instance of stdClass is not a callable');
+        $this->expectException(NotCallableException::class);
+        $invoker = new Invoker;
+        $invoker->call(new stdClass);
     }
 
     /**
@@ -341,41 +407,55 @@ class InvokerTest extends TestCase
     public function should_invoke_static_method_rather_than_resolving_entry_from_container()
     {
         // Register a non-callable so that test fails if we try to invoke that
-        $this->container->set('Invoker\Test\InvokerTestStaticFixture', 'foobar');
+        $this->container->set(InvokerTestStaticFixture::class, 'foobar');
 
         // Call the static method: shouldn't get from the container even though the
         // entry exist (because we are calling a static method)
-        $result = $this->invoker->call(array('Invoker\Test\InvokerTestStaticFixture', 'foo'));
+        $result = $this->invoker->call([InvokerTestStaticFixture::class, 'foo']);
         $this->assertEquals('bar', $result);
     }
 
     /**
      * @test
-     * @expectedException \Invoker\Exception\NotEnoughParametersException
-     * @expectedExceptionMessage Unable to invoke the callable because no value was given for parameter 2 ($bar)
      */
     public function should_throw_if_no_value_for_optional_parameter_1()
     {
+        $this->expectExceptionMessage('Unable to invoke the callable because no value was given for parameter 2 ($bar)');
+        $this->expectException(NotEnoughParametersException::class);
         // Create without the DefaultValueResolver
         $this->invoker = new Invoker(new AssociativeArrayResolver, $this->container);
-        $this->invoker->call(function ($foo, $bar = null) {}, array(
+        $this->invoker->call(function ($foo, $bar = null) {
+        }, [
             'foo' => 'foo',
-        ));
+        ]);
     }
 
     /**
      * @test
-     * @expectedException \Invoker\Exception\NotEnoughParametersException
-     * @expectedExceptionMessage Unable to invoke the callable because no value was given for parameter 2 ($bar)
      */
     public function should_throw_if_no_value_for_optional_parameter_2()
     {
+        $this->expectExceptionMessage('Unable to invoke the callable because no value was given for parameter 2 ($bar)');
+        $this->expectException(NotEnoughParametersException::class);
         // Create without the DefaultValueResolver
         $this->invoker = new Invoker(new AssociativeArrayResolver, $this->container);
-        $this->invoker->call(function ($foo, $bar = null, $baz = null) {}, array(
+        $this->invoker->call(function ($foo, $bar = null, $baz = null) {
+        }, [
             'foo' => 'foo',
             'baz' => 'baz',
-        ));
+        ]);
+    }
+
+    /**
+     * @test
+     */
+    public function should_invoke_callable_with_variadic_parameter()
+    {
+        $result = $this->invoker->call(function (...$param) {
+            return $param;
+        }, [1, 2, 3]);
+
+        $this->assertEquals([1, 2, 3], $result);
     }
 
     private function assertWasCalled(CallableSpy $callableSpy)
@@ -392,8 +472,9 @@ class InvokerTest extends TestCase
 
 class InvokerTestFixture
 {
+    /** @var bool */
     public $wasCalled = false;
-    public function foo()
+    public function foo(): string
     {
         // Use this to make sure we are not called from a static context
         $this->wasCalled = true;
@@ -403,7 +484,7 @@ class InvokerTestFixture
 
 class InvokerTestStaticFixture
 {
-    public static function foo()
+    public static function foo(): string
     {
         return 'bar';
     }
@@ -411,13 +492,14 @@ class InvokerTestStaticFixture
 
 class InvokerTestMagicMethodFixture
 {
+    /** @var bool */
     public $wasCalled = false;
-    public function __call($name, $args)
+    public function __call(string $name, array $args): string
     {
         if ($name === 'foo') {
             $this->wasCalled = true;
             return 'bar';
         }
-        throw new \Exception('Unknown method');
+        throw new Exception('Unknown method');
     }
 }
