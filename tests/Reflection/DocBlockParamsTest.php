@@ -1,8 +1,9 @@
-<?php
+<?php declare(strict_types=1);
 
-namespace Invoker\Reflection;
+namespace Invoker\Test\Reflection;
 
 use Generator;
+use Invoker\Reflection\DocBlockParams;
 use phpDocumentor\Reflection\DocBlock\Description;
 use phpDocumentor\Reflection\DocBlock\Tags\Author;
 use phpDocumentor\Reflection\DocBlock\Tags\Param;
@@ -18,7 +19,7 @@ class DocBlockParamsTest extends TestCase
     /**
      * @return array
      */
-    public function providerTestInvoke()
+    public function providerTestInvoke(): array
     {
         $resolver = new TypeResolver;
         $fn =
@@ -57,10 +58,10 @@ class DocBlockParamsTest extends TestCase
      * @param $callable
      * @param array $args
      */
-    public function testInvoke($expected, $callable, array $args = [])
+    public function testInvoke($expected, $callable, array $args = []): void
     {
         $params = (new DocBlockParams(new ReflectionFunction($callable)));
-        $this->assertInstanceOf(Generator::class, $generator = $params(...$args));
-        $this->assertEquals($expected, iterator_to_array($generator));
+        self::assertInstanceOf(Generator::class, $generator = $params(...$args));
+        self::assertEquals($expected, iterator_to_array($generator));
     }
 }

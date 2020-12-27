@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace Invoker\ParameterResolver;
 
@@ -31,9 +31,9 @@ class AssociativeVariadicResolver extends GeneratorResolver
      * @param ReflectionParameter $parameter
      * @param array                $provided
      *
-     * @return \Generator
+     * @return iterable
      */
-    public function __invoke(ReflectionParameter $parameter, array $provided)
+    public function __invoke(ReflectionParameter $parameter, array $provided): iterable
     {
         if ($parameter->isVariadic() && array_key_exists($key = $parameter->getName(), $provided)) {
             foreach ($this->cast ? array_values((array)$provided[$key]) : [$provided[$key]] as $value) {

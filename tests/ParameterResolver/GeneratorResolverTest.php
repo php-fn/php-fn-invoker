@@ -1,116 +1,96 @@
-<?php
+<?php declare(strict_types=1);
 
-namespace Invoker\ParameterResolver;
+namespace Invoker\Test\ParameterResolver;
 
+use Invoker\ParameterResolver\AssociativeArrayResolver;
 use Invoker\ParameterResolver\Container\ParameterNameContainerResolver;
 use Invoker\ParameterResolver\Container\TypeHintContainerResolver;
+use Invoker\ParameterResolver\DefaultValueResolver;
+use Invoker\ParameterResolver\GeneratorResolver;
+use Invoker\ParameterResolver\NumericArrayResolver;
+use Invoker\ParameterResolver\ParameterResolver;
+use Invoker\ParameterResolver\TypeHintResolver;
 use Invoker\Reflection\CallableReflection;
 use Invoker\Test\Mock\ArrayContainer;
 use phpDocumentor\Reflection\DocBlock\Tags\Param;
 use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerInterface;
+use ReflectionException;
 use ReflectionFunction;
 use ReflectionParameter;
 
 /**
- * @requires PHP 5.6
  * @coversDefaultClass GeneratorResolver
  */
 class GeneratorResolverTest extends TestCase
 {
-    /**
-     * @return array
-     */
-    public function providerSameBehaviour()
+    public function providerSameBehaviour(): array
     {
+        $assoc = new AssociativeArrayResolver();
+        $numeric = new NumericArrayResolver();
         return [
             'assoc' => [
                 [0 => 'A1', 2 => 'A3'],
                 $this->resolvers(AssociativeArrayResolver::class),
-                function($a1, $a2, $a3) {},
+                function ($a1, $a2, $a3) {
+                },
                 ['a1' => 'A1', 'a3' => 'A3'],
             ],
             'assoc-container' => [
                 [1 => 'A2', 2 => 'A3'],
                 $this->resolvers(ParameterNameContainerResolver::class, ['a3' => 'A3', 'a2' => 'A2']),
-                function($a1, $a2, $a3) {},
+                function ($a1, $a2, $a3) {
+                },
             ],
             'numeric' => [
                 [1 => 'A2'],
                 $this->resolvers(NumericArrayResolver::class),
-                function($a1, $a2, $a3) {},
+                function ($a1, $a2, $a3) {
+                },
                 ['a1' => 'A1', 'a3' => 'A3', 1 => 'A2'],
             ],
             'type' => [
-                [1 => 'self', 2 => 'parent'],
+                [1 => $assoc, 2 => $numeric],
                 $this->resolvers(TypeHintResolver::class),
-                function($a1, self $a2, TestCase $a3) {},
-                [self::class => 'self', TestCase::class => 'parent'],
+                function ($a1, AssociativeArrayResolver $a2, NumericArrayResolver $a3) {
+                },
+                [AssociativeArrayResolver::class => $assoc, NumericArrayResolver::class => $numeric],
             ],
             'type-container' => [
-                [0 => 'self', 2 => 'parent'],
-                $this->resolvers(TypeHintContainerResolver::class, [self::class => 'self', TestCase::class => 'parent']),
-                function(self $a1, $a2, TestCase $a3) {},
+                [0 => $assoc, 2 => $numeric],
+                $this->resolvers(
+                    TypeHintContainerResolver::class,
+                    [AssociativeArrayResolver::class => $assoc, NumericArrayResolver::class => $numeric]
+                ),
+                function (AssociativeArrayResolver $a1, $a2, NumericArrayResolver $a3) {
+                },
             ],
             'default' => [
                 [1 => ['array'], 2 => 'string'],
                 $this->resolvers(DefaultValueResolver::class),
-                function($a1, array $a2 = ['array'], $a3 = 'string') {},
+                function ($a1, array $a2 = ['array'], $a3 = 'string') {
+                },
             ],
         ];
     }
 
-    /**
-     * @covers ::getParameters
-     * @dataProvider providerSameBehaviour
-     *
-     * @param array               $expected
-     * @param ParameterResolver[] $resolvers
-     * @param callable            $callable
-     * @param array               $provided
-     * @param array               $resolved
-     */
-    public function testSameBehaviour(
-        array $expected,
-        array $resolvers,
-        callable $callable,
-        array $provided = [],
-        array $resolved = []
-    ) {
-        $reflection = CallableReflection::create($callable);
-        foreach ($resolvers as $type => $resolver) {
-            $this->assertSame($expected, $resolver->getParameters($reflection, $provided, $resolved), $type);
-        }
-    }
-
-    /**
-     * @param string $class
-     * @param array $entries
-     *
-     * @return array
-     */
-    private function resolvers($class, array $entries = [])
+    private function resolvers(string $class, array $entries = []): array
     {
         $container = new ArrayContainer($entries);
         return [
-            'class'     => $this->classes($container)[$class],
+            'class' => $this->classes($container)[$class],
             'generator' => $this->generators($container)[$class],
         ];
     }
 
-    /**
-     * @param ContainerInterface $container
-     *
-     * @return ParameterResolver[]
-     */
-    private function classes(ContainerInterface $container)
+    private function classes(ContainerInterface $container): array
     {
         return [
-            AssociativeArrayResolver::class       => new AssociativeArrayResolver,
-            NumericArrayResolver::class           => new NumericArrayResolver,
-            TypeHintResolver::class               => new TypeHintResolver,
-            DefaultValueResolver::class           => new DefaultValueResolver,
-            TypeHintContainerResolver::class      => new TypeHintContainerResolver($container),
+            AssociativeArrayResolver::class => new AssociativeArrayResolver(),
+            NumericArrayResolver::class => new NumericArrayResolver(),
+            TypeHintResolver::class => new TypeHintResolver(),
+            DefaultValueResolver::class => new DefaultValueResolver(),
+            TypeHintContainerResolver::class => new TypeHintContainerResolver($container),
             ParameterNameContainerResolver::class => new ParameterNameContainerResolver($container),
         ];
     }
@@ -120,11 +100,11 @@ class GeneratorResolverTest extends TestCase
      *
      * @return ParameterResolver[]
      */
-    private function generators(ContainerInterface $container)
+    private function generators(ContainerInterface $container): array
     {
         $generators = [
 
-            AssociativeArrayResolver::class       => function (
+            AssociativeArrayResolver::class => function (
                 ReflectionParameter $parameter,
                 array $provided
             ) {
@@ -133,7 +113,7 @@ class GeneratorResolverTest extends TestCase
                 }
             },
 
-            NumericArrayResolver::class           => function (
+            NumericArrayResolver::class => function (
                 ReflectionParameter $parameter,
                 array $provided
             ) {
@@ -142,7 +122,7 @@ class GeneratorResolverTest extends TestCase
                 }
             },
 
-            TypeHintResolver::class               => function (
+            TypeHintResolver::class => function (
                 ReflectionParameter $parameter,
                 array $provided
             ) {
@@ -151,19 +131,19 @@ class GeneratorResolverTest extends TestCase
                 }
             },
 
-            DefaultValueResolver::class           => function (
+            DefaultValueResolver::class => function (
                 ReflectionParameter $parameter
             ) {
                 if ($parameter->isOptional()) {
                     try {
                         yield $parameter->getDefaultValue();
-                    } catch (\ReflectionException $e) {
+                    } catch (ReflectionException $e) {
                         // Can't get default values from PHP internal classes and functions
                     }
                 }
             },
 
-            TypeHintContainerResolver::class      => function (
+            TypeHintContainerResolver::class => function (
                 ReflectionParameter $parameter
             ) use ($container) {
                 if (($class = $parameter->getClass()) && $container->has($class->name)) {
@@ -181,31 +161,58 @@ class GeneratorResolverTest extends TestCase
 
         ];
 
-        return array_map(function(callable $generator) {
+        return array_map(function (callable $generator) {
             return new GeneratorResolver($generator);
         }, $generators);
     }
 
     /**
      * @covers ::getParameters
+     * @dataProvider providerSameBehaviour
+     *
+     * @param array $expected
+     * @param ParameterResolver[] $resolvers
+     * @param callable $callable
+     * @param array $provided
+     * @param array $resolved
      */
-    public function testGetParametersWithDocBlockTags()
+    public function testSameBehaviour(
+        array $expected,
+        array $resolvers,
+        callable $callable,
+        array $provided = [],
+        array $resolved = []
+    ): void {
+        $reflection = CallableReflection::create($callable);
+        foreach ($resolvers as $type => $resolver) {
+            $actual = $resolver->getParameters($reflection, $provided, $resolved);
+            self::assertSame($expected, $actual, $type);
+        }
+    }
+
+    /**
+     * @covers ::getParameters
+     */
+    public function testGetParametersWithDocBlockTags(): void
     {
-        $actual = (new GeneratorResolver(function(ReflectionParameter $parameter, array $provided, Param $tag = null) {
-            yield [$parameter->getName() => $tag ? [
-                'type' => (string)$tag->getType(),
-                'desc' => (string)$tag->getDescription(),
-            ] : null];
+        $actual = (new GeneratorResolver(function (ReflectionParameter $parameter, array $provided, Param $tag = null) {
+            yield [
+                $parameter->getName() => $tag ? [
+                    'type' => (string)$tag->getType(),
+                    'desc' => (string)$tag->getDescription(),
+                ] : null
+            ];
         }))->getParameters(new ReflectionFunction(
-            /**
-             * @param string $a1
-             * @param bool $a3
-             * @param mixed ...$a4 any description
-             */
-            function($a1, $a2, $a3 = 'default', ...$a4) {}
+        /**
+         * @param string $a1
+         * @param bool $a3
+         * @param mixed ...$a4 any description
+         */
+            function ($a1, $a2, $a3 = 'default', ...$a4) {
+            }
         ), [], []);
 
-        $this->assertEquals([
+        self::assertEquals([
             ['a1' => ['type' => 'string', 'desc' => '']],
             ['a2' => null],
             ['a3' => ['type' => 'bool', 'desc' => '']],

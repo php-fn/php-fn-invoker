@@ -1,10 +1,9 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace Invoker\Reflection;
 
 use Generator;
 use IteratorAggregate;
-use phpDocumentor\Reflection\DocBlock;
 use phpDocumentor\Reflection\DocBlockFactory;
 use ReflectionFunctionAbstract;
 
@@ -33,7 +32,7 @@ class DocBlockParams implements IteratorAggregate
      *
      * @return Generator|DocBlock\Tag[]
      */
-    public function __invoke($tagName = 'param', $indexBy = 'getVariableName')
+    public function __invoke($tagName = 'param', $indexBy = 'getVariableName'): iterable
     {
         if (class_exists(DocBlockFactory::class) && $comment = $this->reflection->getDocComment()) {
             $doc = DocBlockFactory::createInstance()->create($comment);
@@ -48,7 +47,7 @@ class DocBlockParams implements IteratorAggregate
     }
 
     /**
-     * @return Generator|DocBlock\Tags\Param[]
+     * @return DocBlock\Tags\Param[]
      */
     public function getIterator()
     {

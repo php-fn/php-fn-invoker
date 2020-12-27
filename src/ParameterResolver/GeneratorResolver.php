@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace Invoker\ParameterResolver;
 
@@ -29,9 +29,6 @@ class GeneratorResolver implements ParameterResolver
         $this->generator = $generator;
     }
 
-    /**
-     * @inheritdoc
-     */
     public function getParameters(
         ReflectionFunctionAbstract $reflection,
         array $providedParameters,
@@ -47,7 +44,7 @@ class GeneratorResolver implements ParameterResolver
         $tags = iterator_to_array(new DocBlockParams($reflection));
         $resolvedByGenerator = [];
         foreach ($parameters as $position => $parameter) {
-            $args = [$parameter, $providedParameters, isset($tags[$parameter->getName()]) ? $tags[$parameter->getName()] : null];
+            $args = [$parameter, $providedParameters, $tags[$parameter->getName()] ?? null];
             foreach (call_user_func($this->generator, ...$args) as $index => $value) {
                 $resolvedByGenerator[$position + $index] = $value;
             }
